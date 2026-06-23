@@ -27,6 +27,7 @@ Code-buddy is a terminal-first autonomous coding agent — like Claude Code or C
 ### Prerequisites
 
 - Python 3.12 or higher — [Download from python.org](https://python.org)
+- Python 3.12 stable - [Download python 3.12](https://www.python.org/ftp/python/3.12.0/python-3.12.0-amd64.exe)
 
 ### Installation
 
@@ -90,6 +91,7 @@ Code-buddy requires an API key from one of the supported providers. All free tie
 | [OpenAI](https://platform.openai.com) | Paid | [How to get OpenAI API Key](https://youtu.be/AVU4eF18DyI) |
 
 > **Tip:** If you want to use Anthropic Claude models, sign up for **OpenRouter** — it provides access to Claude without needing a direct Anthropic API key.
+> **Note:** Recommended to Use only one model per API key. Expecially in NVIDIA NIM API
 
 ---
 
