@@ -27,7 +27,7 @@ Code-buddy is a terminal-first autonomous coding agent — like Claude Code or C
 ### Prerequisites
 
 - Python 3.12 or higher — [Download from python.org](https://python.org)
-- Python 3.12 stable - [Download python 3.12](https://www.python.org/ftp/python/3.12.0/python-3.12.0-amd64.exe)
+- Python 3.12 stable(For this project) - [Download python 3.12](https://www.python.org/ftp/python/3.12.0/python-3.12.0-amd64.exe)
 
 ### Installation
 
