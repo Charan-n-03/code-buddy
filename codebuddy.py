@@ -182,16 +182,73 @@ def main():
         console.print("[green]API Key saved locally! ✔[/]\n")
         
     # 3. Select Model
-    console.print(f"\n[bold cyan]Select {provider} Model:[/]")
-    models = PROVIDERS[provider]["models"]
-    for i, m in enumerate(models, 1):
+    # 3. Select Model (Dynamically fetched, filtering for FREE models!)
+    console.print(f"\n[bold cyan]Fetching available FREE {provider} models...[/]")
+    import httpx
+    base_url = PROVIDERS[provider]["base_url"]
+    
+    models = []
+    try:
+        res = httpx.get(f"{base_url}/models", headers={"Authorization": f"Bearer {api_key}"}, timeout=10)
+        res.raise_for_status()
+        raw_models = res.json().get("data", [])
+        
+        for m in raw_models:
+            model_id = m["id"]
+            
+            # Skip embedding, audio, and image models
+            if any(x in model_id.lower() for x in ["embed", "tts", "whisper", "dall-e", "image", "vision"]):
+                continue
+                
+            # OpenRouter specific check: pricing.prompt == "0" means it's free
+            if provider == "OpenRouter":
+                pricing = m.get("pricing", {})
+                if pricing.get("prompt") == "0" and pricing.get("completion") == "0":
+                    models.append(model_id)
+            # Groq & NVIDIA are generally free with API limits, so include all chat models
+            elif provider in ["Groq", "NVIDIA"]:
+                models.append(model_id)
+            # Gemini: Free tier exists for flash models, we'll include standard chat models
+            elif provider == "Gemini":
+                if "gemini" in model_id.lower():
+                    models.append(model_id)
+            # OpenAI: Fallback to hardcoded (since none are free)
+            else:
+                if model_id in PROVIDERS[provider]["models"]:
+                    models.append(model_id)
+                    
+    except Exception as e:
+        console.print(f"[yellow]Failed to fetch live models ({e}). Using default list.[/]")
+        models = PROVIDERS[provider]["models"]
+
+    # If API fetch returned nothing useful, fallback to config
+    if not models:
+        models = PROVIDERS[provider]["models"]
+
+    # Sort alphabetically for a cleaner menu
+    models.sort()
+    
+    console.print(f"[bold cyan]Select {provider} Model (showing {min(len(models), 30)} of {len(models)}):[/]")
+    
+    # Show up to 30 models to avoid spamming the terminal
+    display_models = models[:50]
+    for i, m in enumerate(display_models, 1):
         console.print(f"[{i}] {m}")
         
-    m_choice = console.input("[bold yellow]Enter choice: [/]")
+    m_choice = console.input("[bold yellow]Enter choice (or type exact model name): [/]")
     try:
-        model = models[int(m_choice)-1]
-    except:
-        model = models[0]
+        # If they typed a number, get from the displayed list
+        if m_choice.isdigit():
+            model = display_models[int(m_choice)-1]
+        # If they typed a custom string, use it directly
+        else:
+            model = m_choice
+            
+    except Exception:
+        # Fallback if they type an invalid number
+        model = models[0] if models else "gpt-4o-mini"
+        
+    console.print(f"[green]Selected model: {model}[/]")
         
     # 4. Import backend and start
     from backend.main import app

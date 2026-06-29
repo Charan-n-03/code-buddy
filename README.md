@@ -19,6 +19,7 @@ Code-buddy is a terminal-first autonomous coding agent — like Claude Code or C
 - **Autonomous Tools** — The agent can `read_file`, `write_file`, `list_directory`, `grep`, and run arbitrary `bash` commands in your workspace.
 - **Zero Config** — Prompts for your API key on first run and saves it locally. No `.env` file required.
 - **Standalone `.exe`** — Ships as a single executable for Windows users without Python installed.
+- **Lists Free models** — Lists current Free models in openrouter. 
 
 ---
 

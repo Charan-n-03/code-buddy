@@ -1,14 +1,12 @@
 import os
 import subprocess
-import shlex
 import fnmatch
 import re
 from pathlib import Path
 from typing import Any
 from pydantic import BaseModel, Field
 
-
-# ---------- Tool schemas (OpenAI function-calling format) ----------
+# ---------- Tool schemas ----------
 TOOL_SCHEMAS = [
     {
         "type": "function",
@@ -59,13 +57,31 @@ TOOL_SCHEMAS = [
         "function": {
             "name": "run_bash",
             "description": (
-                "Execute a bash command in the workspace. Use for builds, tests, git, etc. "
-                "Avoid interactive commands. Output is truncated to ~4000 chars."
+                "Execute a Windows CMD command in the workspace. Use for builds, tests, git, etc. "
+                "Output is truncated to ~4000 chars."
             ),
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "command": {"type": "string", "description": "Shell command to execute."},
+                    "command": {"type": "string", "description": "The CMD command to execute."},
+                    "timeout": {"type": "integer", "description": "Seconds (default 30, max 120)."},
+                },
+                "required": ["command"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "run_powershell",
+            "description": (
+                "Execute a PowerShell command in the workspace. Use this for advanced Windows operations, "
+                "structured JSON parsing (ConvertTo-Json), and safe error handling (try/catch)."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "command": {"type": "string", "description": "The PowerShell command to execute."},
                     "timeout": {"type": "integer", "description": "Seconds (default 30, max 120)."},
                 },
                 "required": ["command"],
@@ -90,11 +106,9 @@ TOOL_SCHEMAS = [
     },
 ]
 
-
 # ---------- Tool execution ----------
 class ToolError(Exception):
     pass
-
 
 def _safe_path(workspace: Path, rel: str) -> Path:
     workspace = workspace.resolve()
@@ -105,9 +119,7 @@ def _safe_path(workspace: Path, rel: str) -> Path:
         raise ToolError(f"Path '{rel}' is outside the workspace.")
     return target
 
-
-def read_file(workspace: Path, path: str, start_line: int | None = None,
-              end_line: int | None = None) -> str:
+def read_file(workspace: Path, path: str, start_line: int | None = None, end_line: int | None = None) -> str:
     p = _safe_path(workspace, path)
     if not p.is_file():
         raise ToolError(f"Not a file: {path}")
@@ -120,13 +132,11 @@ def read_file(workspace: Path, path: str, start_line: int | None = None,
         return "\n".join(f"{i+1}: {l}" for i, l in enumerate(lines, start=s + 1))
     return "\n".join(f"{i+1}: {l}" for i, l in enumerate(lines, start=1))[:8000]
 
-
 def write_file(workspace: Path, path: str, content: str) -> str:
     p = _safe_path(workspace, path)
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(content, encoding="utf-8")
     return f"Wrote {len(content)} chars to {path}"
-
 
 def list_directory(workspace: Path, path: str = ".") -> str:
     p = _safe_path(workspace, path)
@@ -139,33 +149,39 @@ def list_directory(workspace: Path, path: str = ".") -> str:
         entries.append(f"{tag}  {entry.name}{('  ('+str(size)+'B)') if size else ''}")
     return "\n".join(entries) or "(empty)"
 
-
 def run_bash(workspace: Path, command: str, timeout: int = 30) -> str:
     timeout = min(max(int(timeout), 1), 120)
     try:
         proc = subprocess.run(
-            command,
-            shell=True,
-            cwd=str(workspace),
-            capture_output=True,
-            text=True,
-            timeout=timeout,
+            command, shell=True, cwd=str(workspace), capture_output=True, text=True, timeout=timeout
         )
     except subprocess.TimeoutExpired:
         raise ToolError(f"Command timed out after {timeout}s")
-    out = proc.stdout
-    err = proc.stderr
+    
     result = ""
-    if out:
-        result += f"[stdout]\n{out}"
-    if err:
-        result += f"\n[stderr]\n{err}"
+    if proc.stdout: result += f"[stdout]\n{proc.stdout}"
+    if proc.stderr: result += f"\n[stderr]\n{proc.stderr}"
     result += f"\n[exit code: {proc.returncode}]"
     return result[:4000]
 
+def run_powershell(workspace: Path, command: str, timeout: int = 30) -> str:
+    timeout = min(max(int(timeout), 1), 120)
+    try:
+        # -NoProfile speeds up startup, -Command executes the string
+        proc = subprocess.run(
+            ["powershell", "-NoProfile", "-Command", command],
+            cwd=str(workspace), capture_output=True, text=True, timeout=timeout
+        )
+    except subprocess.TimeoutExpired:
+        raise ToolError(f"PowerShell command timed out after {timeout}s")
+    
+    result = ""
+    if proc.stdout: result += f"[stdout]\n{proc.stdout}"
+    if proc.stderr: result += f"\n[stderr]\n{proc.stderr}"
+    result += f"\n[exit code: {proc.returncode}]"
+    return result[:4000]
 
-def grep(workspace: Path, pattern: str, glob: str | None = None,
-         max_results: int = 50) -> str:
+def grep(workspace: Path, pattern: str, glob: str | None = None, max_results: int = 50) -> str:
     rx = re.compile(pattern)
     matches: list[str] = []
     for root, _dirs, files in os.walk(workspace):
@@ -184,19 +200,14 @@ def grep(workspace: Path, pattern: str, glob: str | None = None,
                 continue
     return "\n".join(matches) if matches else "No matches."
 
-
 def execute_tool(name: str, args: dict, workspace: Path) -> str:
     try:
-        if name == "read_file":
-            return read_file(workspace, **args)
-        if name == "write_file":
-            return write_file(workspace, **args)
-        if name == "list_directory":
-            return list_directory(workspace, **args)
-        if name == "run_bash":
-            return run_bash(workspace, **args)
-        if name == "grep":
-            return grep(workspace, **args)
+        if name == "read_file": return read_file(workspace, **args)
+        if name == "write_file": return write_file(workspace, **args)
+        if name == "list_directory": return list_directory(workspace, **args)
+        if name == "run_bash": return run_bash(workspace, **args)
+        if name == "run_powershell": return run_powershell(workspace, **args)
+        if name == "grep": return grep(workspace, **args)
         raise ToolError(f"Unknown tool: {name}")
     except ToolError as e:
         return f"[ERROR] {e}"
